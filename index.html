@@ -1,131 +1,167 @@
-<!doctype html>
-<html
-	lang="en"
-	style="
-		margin: 0;
-		padding: 0;
-		min-height: 100%;
-		display: flex;
-		flex-direction: column;
-	"
->
-	<head>
-		<meta charset="utf-8" />
-		<meta
-			name="viewport"
-			content="width=device-width, initial-scale=1, shrink-to-fit=no"
-		/>
-		<meta property="og:title" content="Gradio" />
-		<meta property="og:type" content="website" />
-		<meta property="og:url" content="{url}" />
-		<meta property="og:description" content="Click to try out the app!" />
-		<meta
-			property="og:image"
-			content="https://raw.githubusercontent.com/gradio-app/gradio/main/js/_website/src/lib/assets/img/header-image.jpg"
-		/>
-		<meta name="twitter:card" content="summary_large_image" />
-		<meta name="twitter:creator" content="@Gradio" />
-		<meta name="twitter:title" content="Gradio" />
-		<meta name="twitter:description" content="Click to try out the app!" />
-		<meta
-			name="twitter:image"
-			content="https://raw.githubusercontent.com/gradio-app/gradio/main/js/_website/src/lib/assets/img/header-image.jpg"
-		/>
+<!DOCTYPE html>
+<html lang="sv">
+    <!-- Hårdkodad enligt gemini ;-) -->
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Min AI-Modell (Keras/TFJS)</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
+    <style>
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            max-width: 600px; 
+            margin: 2rem auto; 
+            padding: 1rem;
+            background-color: #f9f9f9;
+        }
+        h1 { color: #333; }
+        textarea { 
+            width: 100%; height: 100px; margin-bottom: 1rem; padding: 10px;
+            border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; 
+        }
+        button { 
+            padding: 12px 24px; font-size: 1rem; cursor: pointer; 
+            background: #007bff; color: white; border: none; border-radius: 4px;
+            transition: background 0.2s;
+        }
+        button:hover { background: #0056b3; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        #result { 
+            margin-top: 1.5rem; padding: 1rem; background: white;
+            border-radius: 4px; min-height: 1.5em; font-weight: bold;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        #debug-box {
+            margin-top: 3rem; padding: 1rem; background-color: #eef;
+            border: 1px solid #ccd; border-radius: 4px; font-family: monospace;
+            font-size: 0.85rem; color: #333; height: 150px; overflow-y: auto;
+        }
+        .log-entry { margin-bottom: 4px; border-bottom: 1px solid #eee; padding-bottom: 2px; }
+        .log-error { color: #d00; font-weight: bold; }
+        .log-success { color: #008800; }
+    </style>
+</head>
+<body>
 
-		<style>
-			:root {
-				--bg: white;
-				--col:   #27272a;
-				--bg-dark: #0f0f11;
-				--col-dark: #f4f4f5;
-			}
+    <h1>Testa min text-AI</h1>
+    <p>Skriv en mening nedan (t.ex. "maten var god" eller "jag är arg").</p>
+    
+    <textarea id="textInput" placeholder="Skriv din text här..."></textarea>
+    <br>
+    <button id="predictBtn" onclick="runPrediction()" disabled>⏳ Initierar...</button>
+    
+    <div id="result">Resultatet visas här...</div>
 
+    <div id="debug-box">
+        <div class="log-entry"><strong>Debug-logg startad...</strong></div>
+    </div>
 
-			body {
-				background: var(--bg);
-				color: var(--col);
-				font-family: Arial, Helvetica, sans-serif;
-			}
+    <script>
+        let model;
+        let metadata;
+        // VIKTIGT: Vi tvingar denna till 256 eftersom din modell kräver det
+        const SEQUENCE_LENGTH = 256; 
 
-			@media (prefers-color-scheme: dark) {
-				body {
-					background: var(--bg-dark);
-					color: var(--col-dark);
-				}
-			}
-		</style>
+        function log(message, type = 'info') {
+            const box = document.getElementById('debug-box');
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            const time = new Date().toLocaleTimeString();
+            entry.innerHTML = `<span style="color:#888">[${time}]</span> ${message}`;
+            if (type === 'error') entry.className += ' log-error';
+            if (type === 'success') entry.className += ' log-success';
+            box.appendChild(entry);
+            box.scrollTop = box.scrollHeight;
+            console.log(`[${type}] ${message}`);
+        }
 
-		<meta property="og:url" content="https://gradio.app/" />
-		<meta property="og:type" content="website" />
-		<meta property="og:image" content="" />
-		<meta property="og:title" content="IMDb Movie Review Sentiment Analyzer" />
-		<meta
-			property="og:description"
-			content=""
-		/>
-		<meta name="twitter:card" content="summary_large_image" />
-		<meta name="twitter:creator" content="@teamGradio" />
-		<meta name="twitter:title" content="IMDb Movie Review Sentiment Analyzer" />
-		<meta
-			name="twitter:description"
-			content=""
-		/>
-		<meta name="twitter:image" content="" />
+        async function loadAssets() {
+            try {
+                log("1. Försöker hämta 'tfjs_model/metadata.json'...");
+                const metaResponse = await fetch('tfjs_model/metadata.json');
+                if (!metaResponse.ok) throw new Error(`Kunde inte hitta metadata.json (Status: ${metaResponse.status})`);
+                
+                metadata = await metaResponse.json();
+                log("✅ Metadata laddad.", 'success');
 
-		<script>window.gradio_config = {"version":"5.50.0","api_prefix":"/gradio_api","mode":"interface","app_id":14768059596726061308,"dev_mode":false,"vibe_mode":false,"analytics_enabled":true,"components":[{"id":3,"type":"markdown","props":{"value":"\u003ch1 style=\u0027text-align: center; margin-bottom: 1rem\u0027\u003eIMDb Movie Review Sentiment Analyzer\u003c/h1\u003e","show_label":false,"rtl":false,"latex_delimiters":[{"left":"$$","right":"$$","display":true}],"visible":true,"elem_classes":[],"preserved_by_key":["value"],"sanitize_html":true,"line_breaks":false,"header_links":false,"show_copy_button":false,"container":false,"padding":false,"name":"markdown","_selectable":false},"skip_api":false,"component_class_id":"543eb5f8dcfca947ba66ab196db059c79cdca82621b183bfcd8bbe4afebcd005","key":null,"api_info":{"type":"string"},"api_info_as_input":{"type":"string"},"api_info_as_output":{"type":"string"},"example_inputs":"# Hello!"},{"id":4,"type":"markdown","props":{"value":"Enter a movie review and get its sentiment (Positive or Negative).","show_label":false,"rtl":false,"latex_delimiters":[{"left":"$$","right":"$$","display":true}],"visible":true,"elem_classes":[],"preserved_by_key":["value"],"sanitize_html":true,"line_breaks":false,"header_links":false,"show_copy_button":false,"container":false,"padding":false,"name":"markdown","_selectable":false},"skip_api":false,"component_class_id":"543eb5f8dcfca947ba66ab196db059c79cdca82621b183bfcd8bbe4afebcd005","key":null,"api_info":{"type":"string"},"api_info_as_input":{"type":"string"},"api_info_as_output":{"type":"string"},"example_inputs":"# Hello!"},{"id":5,"type":"row","props":{"variant":"default","visible":true,"equal_height":false,"show_progress":false,"preserved_by_key":[],"name":"row"},"skip_api":true,"component_class_id":"d31af921ae188765327079cfc062d57afc3fd6f1774765ed869512a94f7c5c22","key":null},{"id":6,"type":"column","props":{"scale":1,"min_width":320,"variant":"default","visible":true,"show_progress":false,"preserved_by_key":[],"name":"column"},"skip_api":true,"component_class_id":"d32cc8b06253a743628a25220fc5e2a82556f3b9f3a8810ac82cd17bb190798c","key":null},{"id":7,"type":"column","props":{"scale":1,"min_width":320,"variant":"default","visible":true,"show_progress":false,"preserved_by_key":[],"name":"column"},"skip_api":true,"component_class_id":"d32cc8b06253a743628a25220fc5e2a82556f3b9f3a8810ac82cd17bb190798c","key":null},{"id":0,"type":"textbox","props":{"type":"text","lines":5,"placeholder":"Enter your movie review here...","label":"text","show_label":true,"container":true,"min_width":160,"visible":true,"autofocus":false,"autoscroll":true,"elem_classes":[],"preserved_by_key":["value"],"rtl":false,"show_copy_button":false,"submit_btn":false,"stop_btn":false,"name":"textbox","_selectable":false},"skip_api":false,"component_class_id":"9662103783aaa2c9d411262219a021534ef712eba183b6b1911957c1aa61468e","key":null,"api_info":{"type":"string"},"api_info_as_input":{"type":"string"},"api_info_as_output":{"type":"string"},"example_inputs":"Hello!!"},{"id":8,"type":"form","props":{"scale":0,"min_width":0,"preserved_by_key":[],"name":"form"},"skip_api":true,"component_class_id":"40d4832c92b433558cfc7a2a218841dc7dec54c8c9f9470aa3fca95c935b8614","key":null},{"id":9,"type":"row","props":{"variant":"default","visible":true,"equal_height":false,"show_progress":false,"preserved_by_key":[],"name":"row"},"skip_api":true,"component_class_id":"d31af921ae188765327079cfc062d57afc3fd6f1774765ed869512a94f7c5c22","key":null},{"id":10,"type":"button","props":{"value":"Clear","variant":"secondary","size":"lg","visible":true,"interactive":true,"elem_classes":[],"preserved_by_key":["value"],"show_api":false,"name":"button","_selectable":false},"skip_api":true,"component_class_id":"e74051be11892c3838c5fdb91c0b2cea4f84c5414afe5e9bfd1c88dd5b125fbc","key":null},{"id":11,"type":"button","props":{"value":"Submit","variant":"primary","size":"lg","visible":true,"interactive":true,"elem_classes":[],"preserved_by_key":["value"],"name":"button","_selectable":false},"skip_api":true,"component_class_id":"d94e42bc0de64d88926a97585021956fe523296790198ad29a92dcb81a90b02d","key":null},{"id":12,"type":"column","props":{"scale":1,"min_width":320,"variant":"default","visible":true,"show_progress":false,"preserved_by_key":[],"name":"column"},"skip_api":true,"component_class_id":"d32cc8b06253a743628a25220fc5e2a82556f3b9f3a8810ac82cd17bb190798c","key":null},{"id":1,"type":"label","props":{"value":{},"label":"output","show_label":true,"container":true,"min_width":160,"visible":true,"elem_classes":[],"preserved_by_key":["value"],"show_heading":true,"name":"label","_selectable":false},"skip_api":false,"component_class_id":"3926207803b33d90658e63bf8f890ab14d1eb321525491bd9d0b2b8faa485417","key":null,"api_info":{"$defs":{"LabelConfidence":{"properties":{"label":{"anyOf":[{"type":"string"},{"type":"integer"},{"type":"number"},{"type":"null"}],"default":null,"title":"Label"},"confidence":{"anyOf":[{"type":"number"},{"type":"null"}],"default":null,"title":"Confidence"}},"title":"LabelConfidence","type":"object"}},"properties":{"label":{"anyOf":[{"type":"string"},{"type":"integer"},{"type":"number"},{"type":"null"}],"default":null,"title":"Label"},"confidences":{"anyOf":[{"items":{"$ref":"#/$defs/LabelConfidence"},"type":"array"},{"type":"null"}],"default":null,"title":"Confidences"}},"title":"LabelData","type":"object","additional_description":null},"api_info_as_input":{"$defs":{"LabelConfidence":{"properties":{"label":{"anyOf":[{"type":"string"},{"type":"integer"},{"type":"number"},{"type":"null"}],"default":null,"title":"Label"},"confidence":{"anyOf":[{"type":"number"},{"type":"null"}],"default":null,"title":"Confidence"}},"title":"LabelConfidence","type":"object"}},"properties":{"label":{"anyOf":[{"type":"string"},{"type":"integer"},{"type":"number"},{"type":"null"}],"default":null,"title":"Label"},"confidences":{"anyOf":[{"items":{"$ref":"#/$defs/LabelConfidence"},"type":"array"},{"type":"null"}],"default":null,"title":"Confidences"}},"title":"LabelData","type":"object","additional_description":null},"api_info_as_output":{"$defs":{"LabelConfidence":{"properties":{"label":{"anyOf":[{"type":"string"},{"type":"integer"},{"type":"number"},{"type":"null"}],"default":null,"title":"Label"},"confidence":{"anyOf":[{"type":"number"},{"type":"null"}],"default":null,"title":"Confidence"}},"title":"LabelConfidence","type":"object"}},"properties":{"label":{"anyOf":[{"type":"string"},{"type":"integer"},{"type":"number"},{"type":"null"}],"default":null,"title":"Label"},"confidences":{"anyOf":[{"items":{"$ref":"#/$defs/LabelConfidence"},"type":"array"},{"type":"null"}],"default":null,"title":"Confidences"}},"title":"LabelData","type":"object","additional_description":null},"example_inputs":{"label":"Cat","confidences":[{"label":"cat","confidence":0.9},{"label":"dog","confidence":0.1}]}},{"id":13,"type":"row","props":{"variant":"default","visible":true,"equal_height":false,"show_progress":false,"preserved_by_key":[],"name":"row"},"skip_api":true,"component_class_id":"d31af921ae188765327079cfc062d57afc3fd6f1774765ed869512a94f7c5c22","key":null},{"id":14,"type":"button","props":{"value":"Flag","variant":"secondary","size":"lg","visible":true,"interactive":true,"elem_classes":[],"preserved_by_key":["value"],"name":"button","_selectable":false},"skip_api":true,"component_class_id":"d94e42bc0de64d88926a97585021956fe523296790198ad29a92dcb81a90b02d","key":null}],"css":"","connect_heartbeat":false,"js":"","head":"","title":"IMDb Movie Review Sentiment Analyzer","space_id":null,"enable_queue":true,"show_error":false,"show_api":true,"is_colab":true,"max_file_size":null,"stylesheets":["https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@400;600\u0026display=swap"],"theme":"default","protocol":"sse_v3","body_css":{"body_background_fill":"white","body_text_color":"#27272a","body_background_fill_dark":"#0f0f11","body_text_color_dark":"#f4f4f5"},"fill_height":false,"fill_width":false,"theme_hash":"2fa39f6df94156f7ef9d84370dbb2657d672827c75f082ac995879c32290c5ca","pwa":false,"pages":[["","Home",true]],"page":{"":{"layout":{"id":2,"children":[{"id":3},{"id":4},{"id":5,"children":[{"id":6,"children":[{"id":7,"children":[{"id":8,"children":[{"id":0}]}]},{"id":9,"children":[{"id":10},{"id":11}]}]},{"id":12,"children":[{"id":1},{"id":13,"children":[{"id":14}]}]}]}]},"components":[3,4,5,6,7,0,8,9,10,11,12,1,13,14],"dependencies":[0,1,2,3,4,5]}},"mcp_server":false,"i18n_translations":null,"dependencies":[{"id":0,"targets":[[11,"click"],[0,"submit"]],"inputs":[0],"outputs":[1],"backend_fn":true,"js":null,"queue":true,"api_name":"predict","api_description":null,"scroll_to_output":true,"show_progress":"full","show_progress_on":null,"batch":false,"max_batch_size":4,"cancels":[],"types":{"generator":false,"cancel":false},"collects_event_data":false,"trigger_after":null,"trigger_only_on_success":false,"trigger_only_on_failure":false,"trigger_mode":"once","show_api":true,"rendered_in":null,"render_id":null,"connection":"sse","time_limit":null,"stream_every":0.5,"like_user_message":false,"event_specific_args":[],"js_implementation":null},{"id":1,"targets":[[10,"click"]],"inputs":[],"outputs":[0,1],"backend_fn":false,"js":"() =\u003e [null, {}]","queue":false,"api_name":"js_fn","api_description":null,"scroll_to_output":false,"show_progress":"full","show_progress_on":null,"batch":false,"max_batch_size":4,"cancels":[],"types":{"generator":false,"cancel":false},"collects_event_data":false,"trigger_after":null,"trigger_only_on_success":false,"trigger_only_on_failure":false,"trigger_mode":"once","show_api":false,"rendered_in":null,"render_id":null,"connection":"sse","time_limit":null,"stream_every":0.5,"like_user_message":false,"event_specific_args":null,"js_implementation":null},{"id":2,"targets":[[10,"click"]],"inputs":[],"outputs":[7],"backend_fn":false,"js":"() =\u003e [{\"variant\": null, \"visible\": true, \"__type__\": \"update\"}]\n            ","queue":false,"api_name":"js_fn_1","api_description":null,"scroll_to_output":false,"show_progress":"full","show_progress_on":null,"batch":false,"max_batch_size":4,"cancels":[],"types":{"generator":false,"cancel":false},"collects_event_data":false,"trigger_after":null,"trigger_only_on_success":false,"trigger_only_on_failure":false,"trigger_mode":"once","show_api":false,"rendered_in":null,"render_id":null,"connection":"sse","time_limit":null,"stream_every":0.5,"like_user_message":false,"event_specific_args":null,"js_implementation":null},{"id":3,"targets":[[14,"click"]],"inputs":[],"outputs":[14],"backend_fn":true,"js":null,"queue":false,"api_name":"lambda","api_description":null,"scroll_to_output":false,"show_progress":"full","show_progress_on":null,"batch":false,"max_batch_size":4,"cancels":[],"types":{"generator":false,"cancel":false},"collects_event_data":false,"trigger_after":null,"trigger_only_on_success":false,"trigger_only_on_failure":false,"trigger_mode":"once","show_api":false,"rendered_in":null,"render_id":null,"connection":"sse","time_limit":null,"stream_every":0.5,"like_user_message":false,"event_specific_args":null,"js_implementation":null},{"id":4,"targets":[[14,"click"]],"inputs":[0,1],"outputs":[14],"backend_fn":true,"js":null,"queue":false,"api_name":"Flag","api_description":null,"scroll_to_output":false,"show_progress":"full","show_progress_on":null,"batch":false,"max_batch_size":4,"cancels":[],"types":{"generator":false,"cancel":false},"collects_event_data":false,"trigger_after":null,"trigger_only_on_success":false,"trigger_only_on_failure":false,"trigger_mode":"once","show_api":false,"rendered_in":null,"render_id":null,"connection":"sse","time_limit":null,"stream_every":0.5,"like_user_message":false,"event_specific_args":null,"js_implementation":null},{"id":5,"targets":[[10,"click"]],"inputs":[],"outputs":[14],"backend_fn":true,"js":null,"queue":false,"api_name":"reset","api_description":null,"scroll_to_output":false,"show_progress":"full","show_progress_on":null,"batch":false,"max_batch_size":4,"cancels":[],"types":{"generator":false,"cancel":false},"collects_event_data":false,"trigger_after":null,"trigger_only_on_success":false,"trigger_only_on_failure":false,"trigger_mode":"once","show_api":false,"rendered_in":null,"render_id":null,"connection":"sse","time_limit":null,"stream_every":0.5,"like_user_message":false,"event_specific_args":null,"js_implementation":null}],"layout":{"id":2,"children":[{"id":3},{"id":4},{"id":5,"children":[{"id":6,"children":[{"id":7,"children":[{"id":8,"children":[{"id":0}]}]},{"id":9,"children":[{"id":10},{"id":11}]}]},{"id":12,"children":[{"id":1},{"id":13,"children":[{"id":14}]}]}]}]},"username":null,"deep_link_state":"none","current_page":"","root":"https://2d6724e079de2e95ab.gradio.live"};</script><script>window.gradio_api_info = {"named_endpoints":{"/predict":{"parameters":[{"label":"text","parameter_name":"text","parameter_has_default":false,"parameter_default":null,"type":{"type":"string"},"python_type":{"type":"str","description":""},"component":"Textbox","example_input":"Hello!!"}],"returns":[{"label":"output","type":{"$defs":{"LabelConfidence":{"properties":{"label":{"anyOf":[{"type":"string"},{"type":"integer"},{"type":"number"},{"type":"null"}],"default":null,"title":"Label"},"confidence":{"anyOf":[{"type":"number"},{"type":"null"}],"default":null,"title":"Confidence"}},"title":"LabelConfidence","type":"object"}},"properties":{"label":{"anyOf":[{"type":"string"},{"type":"integer"},{"type":"number"},{"type":"null"}],"default":null,"title":"Label"},"confidences":{"anyOf":[{"items":{"$ref":"#/$defs/LabelConfidence"},"type":"array"},{"type":"null"}],"default":null,"title":"Confidences"}},"title":"LabelData","type":"object","additional_description":null},"python_type":{"type":"dict(label: str | int | float | None, confidences: list[dict(label: str | int | float | None, confidence: float | None)] | None)","description":""},"component":"Label"}],"show_api":true,"description":""}},"unnamed_endpoints":{}};</script>
+                log("2. Försöker hämta 'tfjs_model/model.json'...");
+                model = await tf.loadLayersModel('tfjs_model/model.json');
+                log("✅ AI-modellen laddad!", 'success');
 
-		<link rel="preconnect" href="https://fonts.googleapis.com" />
-		<link
-			rel="preconnect"
-			href="https://fonts.gstatic.com"
-			crossorigin="anonymous"
-		/>
-		<script
-			src="https://cdnjs.cloudflare.com/ajax/libs/iframe-resizer/4.3.1/iframeResizer.contentWindow.min.js"
-			async
-		></script>
-		<script data-gradio-mode>
-			window.__gradio_mode__ = "app";
-			window.iFrameResizer = {
-				autoResize: false,
-				sizeWidth: false
-			};
-			window.parent?.postMessage(
-				{ type: "SET_SCROLLING", enabled: false },
-				"*"
-			);
-		</script>
-		<link rel="manifest" href="/manifest.json" />
-		<script type="module" crossorigin src="./assets/index-DputZZxm.js"></script>
-		<link rel="stylesheet" crossorigin href="./assets/index-CCA5X64I.css">
-	</head>
+                const btn = document.getElementById('predictBtn');
+                btn.disabled = false;
+                btn.innerText = "Analysera text";
+                
+                // Värm upp modellen med korrekt shape [1, 256]
+                tf.tidy(() => {
+                    model.predict(tf.zeros([1, SEQUENCE_LENGTH]));
+                });
+                log("Redo för input.");
 
-	<body
-		style="
-			width: 100%;
-			margin: 0;
-			padding: 0;
-			display: flex;
-			flex-direction: column;
-			flex-grow: 1;
-		"
-	>
-		<gradio-app
-			control_page_title="true"
-			embed="false"
-			eager="true"
-			style="display: flex; flex-direction: column; flex-grow: 1"
-		>
-		</gradio-app>
-		<script>
-			const ce = document.getElementsByTagName("gradio-app");
+            } catch (err) {
+                log("KRITISKT FEL: " + err.message, 'error');
+                if (err.message.includes('404')) {
+                    log("TIPS: Kontrollera att mappen heter 'tfjs_model'.", 'error');
+                }
+            }
+        }
 
-			if (ce[0]) {
-				ce[0].addEventListener("domchange", () => {
-					document.body.style.padding = "0";
-				});
-				document.body.style.padding = "0";
-			}
-		</script>
-	</body>
+        loadAssets();
+
+        function tokenize(text) {
+            const words = text.toLowerCase().replace(/[.,!?;:]/g, '').split(/\s+/);
+            const wordIndex = metadata.word_index;
+            const OOV_INDEX = 1; 
+            const PAD_INDEX = 0; 
+
+            const sequence = words.map(word => {
+                return wordIndex[word] || OOV_INDEX;
+            });
+
+            // Padda till exakt 256
+            const paddedSequence = new Array(SEQUENCE_LENGTH).fill(PAD_INDEX);
+            for (let i = 0; i < Math.min(sequence.length, SEQUENCE_LENGTH); i++) {
+                paddedSequence[i] = sequence[i];
+            }
+            return paddedSequence;
+        }
+
+        async function runPrediction() {
+            const text = document.getElementById('textInput').value;
+            if (!text) { log("Ingen text."); return; }
+
+            try {
+                log(`Analyserar: "${text}"...`);
+                
+                const inputIndices = tokenize(text);
+                
+                // HÄR VAR FELET INNAN:
+                // Vi använder nu SEQUENCE_LENGTH (256) istället för metadata.max_len
+                const inputTensor = tf.tensor2d([inputIndices], [1, SEQUENCE_LENGTH]);
+
+                const prediction = model.predict(inputTensor);
+                const score = prediction.dataSync()[0]; 
+
+                const resultDiv = document.getElementById('result');
+                const percent = (score * 100).toFixed(1);
+                
+                log(`Resultat: ${percent}% (Råvärde: ${score})`, 'success');
+
+                if (score > 0.5) {
+                    resultDiv.innerText = `Positivt! (${percent}%) ✅`;
+                    resultDiv.style.color = "green";
+                } else {
+                    resultDiv.innerText = `Negativt/Neutralt (${percent}%) ❌`;
+                    resultDiv.style.color = "#d00";
+                }
+
+                inputTensor.dispose();
+                prediction.dispose();
+
+            } catch (e) {
+                log("Fel vid analys: " + e.message, 'error');
+            }
+        }
+    </script>
+</body>
 </html>
